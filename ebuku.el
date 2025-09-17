@@ -844,89 +844,12 @@ This cache is populated by the `ebuku-update-tags-cache' command.")
 ;;
 ;; User-facing functions.
 ;;
-(defun ebuku-add-bookmark-programmatic (url &optional title tags comment)
-  "Add a bookmark to the buku database programmatically without user interaction.
-
-Arguments:
-- URL: The bookmark URL (required)
-- TITLE: The bookmark title (optional)
-- TAGS: List of tags or nil (optional)
-- COMMENT: The bookmark comment (optional)
-
-Returns the index of the newly added bookmark as a string.
-Signals `user-error' if the bookmark already exists."
-  (unless url
-    (error "URL is required"))
-  
-  (let ((index "")
-        (retrieved-title "")
-        (retrieved-comment "")
-        (tags-string (mapconcat
-                      #'identity
-                      (completing-read-multiple "tag(s)? " ebuku-tags)
-                      ",")))
-
-    (if ebuku-retrieve-url-metadata
-        (progn
-          ;; First, add URL to get metadata
-          (with-temp-buffer
-            (if (ebuku--call-buku `("--add" ,url))
-                (progn
-                  (goto-char (point-min))
-                  (if (re-search-forward
-                       "already exists at index \\([[:digit:]]+\\)" nil t)
-                      (user-error "Bookmark already exists at index %s" (match-string 1)))
-                  (re-search-forward "^\\([[:digit:]]+\\)\\. \\(.+\\)$")
-                  (setq index (match-string 1))
-                  (setq retrieved-title (match-string 2))
-                  (if (re-search-forward "^\\s-+\\+ \\(.+\\)$" nil t)
-                      (setq retrieved-comment (match-string 1))))
-              (error "Failed to add bookmark")))
-          
-          ;; Update with user-provided metadata
-          (with-temp-buffer
-            (if (not (ebuku--call-buku `("--update" ,index
-                                         "--title" ,(or title retrieved-title)
-                                         "--comment" ,(or comment retrieved-comment)
-                                         "--tag" ,tags-string)))
-                (error "Failed to modify bookmark metadata")
-              (progn
-                (goto-char (point-min))
-                (re-search-forward "^\\([[:digit:]]+\\)\\.")
-                (setq ebuku--new-index (match-string 1))))))
-      
-      ;; Direct add without metadata retrieval
-      (with-temp-buffer
-        (let ((args `("--add" ,url)))
-          (when title
-            (setq args (append args `("--title" ,title))))
-          (when (and tags-string (not (string-empty-p tags-string)))
-            (setq args (append args `("--tag" ,tags-string))))
-          (when comment
-            (setq args (append args `("--comment" ,comment))))
-          
-          (if (ebuku--call-buku args)
-              (progn
-                (goto-char (point-min))
-                (if (re-search-forward
-                     "already exists at index \\([[:digit:]]+\\)" nil t)
-                    (user-error "Bookmark already exists at index %s" (match-string 1))
-                  (if (re-search-forward "^\\([[:digit:]]+\\)\\." nil t)
-                      (setq ebuku--new-index (match-string 1))
-                    (error "Failed to parse bookmark index"))))
-            (error "Failed to add bookmark")))))
-    
-    ebuku--new-index))
-
-(defun ebuku-add-bookmark ()
+(defun ebuku-add-bookmark (&optional url title  comment)
   "Add a bookmark to the buku database."
   (interactive)
-  (let ((url "")
-        (index "")
-        (title "")
-        (tags "")
-        (comment ""))
-    (setq url (read-from-minibuffer "Bookmark URL? "))
+  (let ((index "")
+        (tags ""))
+    (setq url (read-from-minibuffer "Bookmark URL? " url))
     (if ebuku-retrieve-url-metadata
         (with-temp-buffer
           (if (ebuku--call-buku `("--add" ,url))
